@@ -1,0 +1,9 @@
+import { Controller, Get } from '@nestjs/common';
+
+@Controller('@@kebabName@@')
+export class @@PascalName@@Controller {
+  @Get()
+  getMessage(): string {
+    return '@@PascalName@@ module up and running.';
+  }
+}

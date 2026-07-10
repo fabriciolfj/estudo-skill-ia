@@ -1,0 +1,7 @@
+import { Module } from '@nestjs/common';
+import { @@PascalName@@Controller } from './@@kebabName@@.controller';
+
+@Module({
+  controllers: [@@PascalName@@Controller],
+})
+export class @@PascalName@@Module {}

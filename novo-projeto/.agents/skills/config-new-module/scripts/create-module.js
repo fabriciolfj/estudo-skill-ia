@@ -70,6 +70,14 @@ function checkNamespace(ns) {
   }
 }
 
+function toPascalCase(kebabName) {
+  return kebabName
+    .split('-')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+}
+
 function checkModuleName(name) {
   if (!name) {
     fail('Nome do modulo nao informado. Rode novamente com --name=<nome-do-modulo> (ex.: auth).');
@@ -103,9 +111,9 @@ function checkTargetDir(dir) {
 function stepEnsureModulesDir(targetDir) {
   const modulesDir = path.join(targetDir, 'modules');
   if (exists(modulesDir)) {
-    log('1/8', 'Pasta modules/ ja existe, pulando criacao.');
+    log('1/10', 'Pasta modules/ ja existe, pulando criacao.');
   } else {
-    log('1/8', 'Criando pasta modules/...');
+    log('1/10', 'Criando pasta modules/...');
     fs.mkdirSync(modulesDir);
     ok('Pasta modules/ criada.');
   }
@@ -113,7 +121,7 @@ function stepEnsureModulesDir(targetDir) {
 }
 
 function stepCopyAssets(moduleDir, namespace, moduleName) {
-  log('2/8', `Copiando arquivos do modulo para modules/${moduleName}/...`);
+  log('2/10', `Copiando arquivos do modulo para modules/${moduleName}/...`);
   fs.mkdirSync(moduleDir, { recursive: true });
   for (const file of ASSET_FILES) {
     fs.copyFileSync(path.join(ASSETS_DIR, file), path.join(moduleDir, file));
@@ -126,7 +134,7 @@ function stepCopyAssets(moduleDir, namespace, moduleName) {
 }
 
 function stepAddDependencyToApps(targetDir, namespace, moduleName) {
-  log('3/8', 'Adicionando dependencia do modulo em apps/frontend e apps/backend...');
+  log('3/10', 'Adicionando dependencia do modulo em apps/frontend e apps/backend...');
   const depName = `${namespace}/${moduleName}`;
   for (const app of ['frontend', 'backend']) {
     const pkgPath = path.join(targetDir, 'apps', app, 'package.json');
@@ -139,7 +147,7 @@ function stepAddDependencyToApps(targetDir, namespace, moduleName) {
 }
 
 function stepEnsureTsNodeInRoot(rootPkgPath) {
-  log('4/8', 'Garantindo ts-node no devDependencies do package.json raiz...');
+  log('4/10', 'Garantindo ts-node no devDependencies do package.json raiz...');
   const pkg = readJson(rootPkgPath);
   pkg.devDependencies = pkg.devDependencies || {};
   if (pkg.devDependencies['ts-node']) {
@@ -152,7 +160,7 @@ function stepEnsureTsNodeInRoot(rootPkgPath) {
 }
 
 function stepEnsureModulesWorkspace(rootPkgPath) {
-  log('5/8', 'Garantindo "modules/*" em workspaces do package.json raiz...');
+  log('5/10', 'Garantindo "modules/*" em workspaces do package.json raiz...');
   const pkg = readJson(rootPkgPath);
   pkg.workspaces = pkg.workspaces || [];
   if (pkg.workspaces.includes('modules/*')) {
@@ -169,20 +177,78 @@ function stepEnsureModulesWorkspace(rootPkgPath) {
   ok('"modules/*" adicionado a workspaces.');
 }
 
+function stepCreateNestModule(targetDir, moduleName) {
+  log('6/10', `Criando modulo Nest em apps/backend/src/modules/${moduleName}/...`);
+  const pascalName = toPascalCase(moduleName);
+  const nestModuleDir = path.join(targetDir, 'apps', 'backend', 'src', 'modules', moduleName);
+  fs.mkdirSync(nestModuleDir, { recursive: true });
+
+  const applyPlaceholders = (template) =>
+    template.replace(/@@PascalName@@/g, pascalName).replace(/@@kebabName@@/g, moduleName);
+
+  const controllerContent = applyPlaceholders(
+    fs.readFileSync(path.join(ASSETS_DIR, 'nest-controller.ts.template'), 'utf8')
+  );
+  fs.writeFileSync(path.join(nestModuleDir, `${moduleName}.controller.ts`), controllerContent);
+
+  const moduleContent = applyPlaceholders(
+    fs.readFileSync(path.join(ASSETS_DIR, 'nest-module.ts.template'), 'utf8')
+  );
+  fs.writeFileSync(path.join(nestModuleDir, `${moduleName}.module.ts`), moduleContent);
+
+  ok(
+    `Modulo Nest "${pascalName}Module" e "${pascalName}Controller" criados em apps/backend/src/modules/${moduleName}/.`
+  );
+}
+
+function stepRegisterNestModuleInAppModule(targetDir, moduleName) {
+  log('7/10', 'Registrando modulo Nest em apps/backend/src/app.module.ts...');
+  const pascalName = toPascalCase(moduleName);
+  const className = `${pascalName}Module`;
+  const appModulePath = path.join(targetDir, 'apps', 'backend', 'src', 'app.module.ts');
+  if (!exists(appModulePath)) {
+    fail(`Arquivo nao encontrado: ${appModulePath}`);
+  }
+  let content = fs.readFileSync(appModulePath, 'utf8');
+
+  if (content.includes(className)) {
+    ok(`${className} ja registrado em app.module.ts, pulando.`);
+    return;
+  }
+
+  const importLine = `import { ${className} } from './modules/${moduleName}/${moduleName}.module';`;
+  const importMatches = [...content.matchAll(/^import .+;$/gm)];
+  const lastImportMatch = importMatches[importMatches.length - 1];
+  if (lastImportMatch) {
+    const insertPos = lastImportMatch.index + lastImportMatch[0].length;
+    content = content.slice(0, insertPos) + '\n' + importLine + content.slice(insertPos);
+  } else {
+    content = importLine + '\n' + content;
+  }
+
+  if (!/imports:\s*\[/.test(content)) {
+    fail('Nao foi possivel localizar "imports: [" em apps/backend/src/app.module.ts.');
+  }
+  content = content.replace(/imports:\s*\[/, (m) => `${m}\n    ${className},`);
+
+  fs.writeFileSync(appModulePath, content);
+  ok(`${className} importado e registrado em imports do AppModule.`);
+}
+
 function stepInstall(targetDir) {
-  log('6/8', 'Instalando dependencias do projeto (npm install)...');
+  log('8/10', 'Instalando dependencias do projeto (npm install)...');
   run('npm', ['install'], targetDir);
   ok('Dependencias instaladas.');
 }
 
 function stepBuild(targetDir) {
-  log('7/8', 'Rodando build do projeto (npm run build)...');
+  log('9/10', 'Rodando build do projeto (npm run build)...');
   run('npm', ['run', 'build'], targetDir);
   ok('Build concluido.');
 }
 
 function stepTestModule(moduleDir, moduleName) {
-  log('8/8', `Rodando testes do modulo ${moduleName}...`);
+  log('10/10', `Rodando testes do modulo ${moduleName}...`);
   run('npm', ['test'], moduleDir);
   ok('Testes do modulo passaram.');
 }
@@ -194,6 +260,12 @@ function stepVerify(targetDir, namespace, moduleName) {
   const frontendPkg = readJson(path.join(targetDir, 'apps', 'frontend', 'package.json'));
   const backendPkg = readJson(path.join(targetDir, 'apps', 'backend', 'package.json'));
   const depName = `${namespace}/${moduleName}`;
+  const pascalName = toPascalCase(moduleName);
+  const nestModuleDir = path.join(targetDir, 'apps', 'backend', 'src', 'modules', moduleName);
+  const appModuleContent = fs.readFileSync(
+    path.join(targetDir, 'apps', 'backend', 'src', 'app.module.ts'),
+    'utf8'
+  );
 
   const checks = [
     [`modules/${moduleName} existe`, exists(moduleDir)],
@@ -209,6 +281,24 @@ function stepVerify(targetDir, namespace, moduleName) {
     ['ts-node no devDependencies raiz', !!rootPkg.devDependencies?.['ts-node']],
     [`frontend depende de "${depName}"`, frontendPkg.dependencies?.[depName] === '*'],
     [`backend depende de "${depName}"`, backendPkg.dependencies?.[depName] === '*'],
+    [
+      `apps/backend/src/modules/${moduleName}/${moduleName}.module.ts existe`,
+      exists(path.join(nestModuleDir, `${moduleName}.module.ts`)),
+    ],
+    [
+      `apps/backend/src/modules/${moduleName}/${moduleName}.controller.ts existe`,
+      exists(path.join(nestModuleDir, `${moduleName}.controller.ts`)),
+    ],
+    [
+      `app.module.ts importa ${pascalName}Module`,
+      appModuleContent.includes(
+        `import { ${pascalName}Module } from './modules/${moduleName}/${moduleName}.module';`
+      ),
+    ],
+    [
+      `app.module.ts registra ${pascalName}Module em imports`,
+      new RegExp(`imports:\\s*\\[\\s*${pascalName}Module,`).test(appModuleContent),
+    ],
   ];
 
   let allOk = true;
@@ -240,6 +330,8 @@ function main() {
   stepAddDependencyToApps(targetDir, namespace, moduleName);
   stepEnsureTsNodeInRoot(rootPkgPath);
   stepEnsureModulesWorkspace(rootPkgPath);
+  stepCreateNestModule(targetDir, moduleName);
+  stepRegisterNestModuleInAppModule(targetDir, moduleName);
   stepInstall(targetDir);
   stepBuild(targetDir);
   stepTestModule(moduleDir, moduleName);
