@@ -9,27 +9,38 @@ description: >-
   "modules/*" em workspaces, instala dependencias, builda o projeto e roda os
   testes do modulo. Alem disso, gera um modulo NestJS equivalente em
   apps/backend/src/modules/<nome-do-modulo> (Module + Controller com endpoint
-  GET retornando uma mensagem padrao) e o registra em AppModule. Use quando o
-  usuario pedir para criar/adicionar um novo modulo de negocio (ex.: auth,
-  transaction) dentro da pasta modules.
+  GET retornando uma mensagem padrao) e o registra em AppModule, e gera a
+  estrutura do modulo no frontend (rota, por padrao privada, em
+  apps/frontend/src/app/(private)/<nome-do-modulo>/page.tsx — configuravel via
+  --route-group para outro grupo como public —, pagina principal
+  <nome-do-modulo>.page.tsx e componente principal
+  <nome-do-modulo>.component.tsx em
+  apps/frontend/src/modules/<nome-do-modulo>/). Use quando o usuario pedir
+  para criar/adicionar um novo modulo de negocio (ex.: auth, transaction)
+  dentro da pasta modules.
 ---
 
 # Config Novo Modulo
 
 Automatiza, via script Node.js deterministico, a criacao de um novo modulo em
 `modules/<nome-do-modulo>` dentro de um monorepo Turborepo + Next.js + NestJS,
-e de um modulo NestJS correspondente em
+de um modulo NestJS correspondente em
 `apps/backend/src/modules/<nome-do-modulo>`, ja registrado em `AppModule` e
-exposto via endpoint HTTP.
+exposto via endpoint HTTP, e da estrutura do modulo no frontend (rota privada
++ pagina + componente) em `apps/frontend/src`.
 
 Toda a logica vive em
 [`scripts/create-module.js`](scripts/create-module.js) — nao reimplemente os
 passos manualmente. Sempre invoque o script. Os arquivos do modulo de negocio
 sao copiados literalmente da pasta [`assets/`](assets) (fonte unica de
-verdade da estrutura pre-definida); o Module/Controller do NestJS sao gerados
-a partir dos templates
-[`assets/nest-module.ts.template`](assets/nest-module.ts.template) e
-[`assets/nest-controller.ts.template`](assets/nest-controller.ts.template).
+verdade da estrutura pre-definida); o Module/Controller do NestJS e os
+arquivos do frontend sao gerados a partir dos templates
+[`assets/nest-module.ts.template`](assets/nest-module.ts.template),
+[`assets/nest-controller.ts.template`](assets/nest-controller.ts.template),
+[`assets/frontend-route-page.tsx.template`](assets/frontend-route-page.tsx.template),
+[`assets/frontend-module-page.tsx.template`](assets/frontend-module-page.tsx.template)
+e
+[`assets/frontend-module-component.tsx.template`](assets/frontend-module-component.tsx.template).
 
 ## Requisito obrigatorio: namespace
 
@@ -50,7 +61,7 @@ Rode a partir da raiz do projeto (onde estao `package.json`, `apps/` e,
 opcionalmente, `modules/`):
 
 ```bash
-node .agents/skills/config-new-module/scripts/create-module.js --name=<nome-do-modulo> --namespace=@escopo [--dir=<caminho>]
+node .agents/skills/config-new-module/scripts/create-module.js --name=<nome-do-modulo> --namespace=@escopo [--route-group=<grupo>] [--dir=<caminho>]
 ```
 
 - `--name=<nome-do-modulo>` (obrigatorio): nome do modulo em kebab-case
@@ -59,6 +70,10 @@ node .agents/skills/config-new-module/scripts/create-module.js --name=<nome-do-m
 - `--namespace=@escopo` (obrigatorio): escopo npm ja aplicado ao monorepo
   (ex.: `@meu-projeto`). Usado para nomear o pacote do modulo e a dependencia
   adicionada em frontend/backend.
+- `--route-group=<grupo>` (opcional): nome do route group do Next.js onde a
+  rota do modulo sera criada em `apps/frontend/src/app/(<grupo>)/<nome-do-modulo>/`
+  (ex.: `private`, `public`). Padrao: `private`. Use `public` para modulos cujas
+  rotas nao exigem autenticacao (ex.: `auth`).
 - `--dir=<caminho>` (opcional): diretorio alvo (raiz do monorepo). Padrao:
   diretorio atual.
 
@@ -89,22 +104,31 @@ Nao passe flags alem dessas.
    (import + entrada em `imports: []`) em
    `apps/backend/src/app.module.ts`. Nenhum teste e criado para este modulo
    NestJS.
-5. **Idempotente nos ajustes de config**: cada ajuste (ts-node, workspaces,
+5. **Modulo do frontend deterministico**: cria
+   `apps/frontend/src/modules/<nome-do-modulo>/<nome-do-modulo>.component.tsx`
+   (componente principal) e
+   `apps/frontend/src/modules/<nome-do-modulo>/<nome-do-modulo>.page.tsx`
+   (pagina principal, que renderiza o componente) a partir dos templates de
+   `assets/`; cria tambem a rota no route group informado (padrao `private`)
+   `apps/frontend/src/app/(<route-group>)/<nome-do-modulo>/page.tsx`, que
+   apenas importa e renderiza a pagina principal do modulo (usando o alias
+   `@/*` ja configurado em `apps/frontend/tsconfig.json`).
+6. **Idempotente nos ajustes de config**: cada ajuste (ts-node, workspaces,
    dependencia nos apps, registro do modulo NestJS em `app.module.ts`)
    verifica se ja esta presente antes de escrever de novo; os 5 arquivos do
-   modulo de negocio e os 2 arquivos do modulo NestJS sao sempre
-   sobrescritos com a versao de `assets/` (garante consistencia se a skill
-   rodar de novo).
-6. **Instalacao, build e teste automaticos**: ao final, roda `npm install` na
+   modulo de negocio, os 2 arquivos do modulo NestJS e os 3 arquivos do
+   modulo no frontend sao sempre sobrescritos com a versao de `assets/`
+   (garante consistencia se a skill rodar de novo).
+7. **Instalacao, build e teste automaticos**: ao final, roda `npm install` na
    raiz, `npm run build` na raiz (via Turborepo, o que inclui o build do
-   backend com o novo modulo) e `npm test` dentro do modulo de negocio
-   criado.
-7. **Verificacao final**: confere que todos os arquivos do modulo de negocio
-   e do modulo NestJS existem, o `package.json` do modulo tem o `name`
-   correto, `workspaces` e `devDependencies` do raiz estao corretos, as
-   dependencias foram adicionadas em frontend/backend e o modulo NestJS foi
-   importado e registrado em `AppModule`. Se algo falhar, o script termina
-   com codigo de saida != 0 e lista o que falhou.
+   backend e do frontend com o novo modulo) e `npm test` dentro do modulo de
+   negocio criado.
+8. **Verificacao final**: confere que todos os arquivos do modulo de negocio,
+   do modulo NestJS e do modulo no frontend existem, o `package.json` do
+   modulo tem o `name` correto, `workspaces` e `devDependencies` do raiz
+   estao corretos, as dependencias foram adicionadas em frontend/backend e o
+   modulo NestJS foi importado e registrado em `AppModule`. Se algo falhar, o
+   script termina com codigo de saida != 0 e lista o que falhou.
 
 ## Passo a passo reproduzido internamente
 
@@ -126,7 +150,15 @@ Nao passe flags alem dessas.
 7. Registra o novo `Module` em `apps/backend/src/app.module.ts`: adiciona o
    `import` no topo do arquivo e a entrada correspondente em `imports: []` do
    `@Module({...})` do `AppModule` (pula se ja estiver registrado).
-8. Roda `npm install` na raiz do projeto.
-9. Roda `npm run build` na raiz do projeto.
-10. Roda `npm test` dentro de `modules/<nome-do-modulo>`.
-11. Roda a verificacao final descrita acima.
+8. Cria, no frontend, `apps/frontend/src/modules/<nome-do-modulo>/<nome-do-modulo>.component.tsx`
+   e `apps/frontend/src/modules/<nome-do-modulo>/<nome-do-modulo>.page.tsx` a
+   partir dos templates `frontend-module-component.tsx.template` e
+   `frontend-module-page.tsx.template`, e a rota
+   `apps/frontend/src/app/(<route-group>)/<nome-do-modulo>/page.tsx` (route
+   group padrao `private`, configuravel via `--route-group`) a partir de
+   `frontend-route-page.tsx.template` (mesmos placeholders `@@PascalName@@` e
+   `@@kebabName@@`).
+9. Roda `npm install` na raiz do projeto.
+10. Roda `npm run build` na raiz do projeto.
+11. Roda `npm test` dentro de `modules/<nome-do-modulo>`.
+12. Roda a verificacao final descrita acima.

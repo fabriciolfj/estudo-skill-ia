@@ -1,5 +1,5 @@
 {
-  "name": "@meu-projeto/eslint-config",
+  "name": "@poupig/eslint-config",
   "version": "0.0.0",
   "type": "module",
   "private": true,

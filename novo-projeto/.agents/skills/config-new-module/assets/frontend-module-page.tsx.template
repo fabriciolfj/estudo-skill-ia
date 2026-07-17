@@ -1,0 +1,5 @@
+import { @@PascalName@@Component } from './@@kebabName@@.component';
+
+export function @@PascalName@@Page() {
+  return <@@PascalName@@Component />;
+}

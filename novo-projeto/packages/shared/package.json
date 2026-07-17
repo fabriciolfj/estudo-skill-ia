@@ -1,5 +1,5 @@
 {
-  "name": "@poupig/auth",
+  "name": "@poupig/shared",
   "version": "0.0.0",
   "private": true,
   "main": "./index.ts",
@@ -8,9 +8,7 @@
     "build": "tsc",
     "test": "jest"
   },
-  "dependencies": {
-    "@poupig/shared": "*"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "jest": "^30.0.0",

@@ -89,6 +89,14 @@ function checkModuleName(name) {
   }
 }
 
+function checkRouteGroup(routeGroup) {
+  if (!/^[a-z][a-z0-9-]*$/.test(routeGroup)) {
+    fail(
+      `Route group invalido: "${routeGroup}". Use kebab-case em minusculas, iniciando por letra (ex.: private, public).`
+    );
+  }
+}
+
 function checkTargetDir(dir) {
   if (!exists(dir)) fail(`Diretorio alvo nao existe: ${dir}`);
   const rootPkgPath = path.join(dir, 'package.json');
@@ -111,9 +119,9 @@ function checkTargetDir(dir) {
 function stepEnsureModulesDir(targetDir) {
   const modulesDir = path.join(targetDir, 'modules');
   if (exists(modulesDir)) {
-    log('1/10', 'Pasta modules/ ja existe, pulando criacao.');
+    log('1/12', 'Pasta modules/ ja existe, pulando criacao.');
   } else {
-    log('1/10', 'Criando pasta modules/...');
+    log('1/12', 'Criando pasta modules/...');
     fs.mkdirSync(modulesDir);
     ok('Pasta modules/ criada.');
   }
@@ -121,7 +129,7 @@ function stepEnsureModulesDir(targetDir) {
 }
 
 function stepCopyAssets(moduleDir, namespace, moduleName) {
-  log('2/10', `Copiando arquivos do modulo para modules/${moduleName}/...`);
+  log('2/12', `Copiando arquivos do modulo para modules/${moduleName}/...`);
   fs.mkdirSync(moduleDir, { recursive: true });
   for (const file of ASSET_FILES) {
     fs.copyFileSync(path.join(ASSETS_DIR, file), path.join(moduleDir, file));
@@ -134,7 +142,7 @@ function stepCopyAssets(moduleDir, namespace, moduleName) {
 }
 
 function stepAddDependencyToApps(targetDir, namespace, moduleName) {
-  log('3/10', 'Adicionando dependencia do modulo em apps/frontend e apps/backend...');
+  log('3/12', 'Adicionando dependencia do modulo em apps/frontend e apps/backend...');
   const depName = `${namespace}/${moduleName}`;
   for (const app of ['frontend', 'backend']) {
     const pkgPath = path.join(targetDir, 'apps', app, 'package.json');
@@ -147,7 +155,7 @@ function stepAddDependencyToApps(targetDir, namespace, moduleName) {
 }
 
 function stepEnsureTsNodeInRoot(rootPkgPath) {
-  log('4/10', 'Garantindo ts-node no devDependencies do package.json raiz...');
+  log('4/12', 'Garantindo ts-node no devDependencies do package.json raiz...');
   const pkg = readJson(rootPkgPath);
   pkg.devDependencies = pkg.devDependencies || {};
   if (pkg.devDependencies['ts-node']) {
@@ -160,7 +168,7 @@ function stepEnsureTsNodeInRoot(rootPkgPath) {
 }
 
 function stepEnsureModulesWorkspace(rootPkgPath) {
-  log('5/10', 'Garantindo "modules/*" em workspaces do package.json raiz...');
+  log('5/12', 'Garantindo "modules/*" em workspaces do package.json raiz...');
   const pkg = readJson(rootPkgPath);
   pkg.workspaces = pkg.workspaces || [];
   if (pkg.workspaces.includes('modules/*')) {
@@ -178,7 +186,7 @@ function stepEnsureModulesWorkspace(rootPkgPath) {
 }
 
 function stepCreateNestModule(targetDir, moduleName) {
-  log('6/10', `Criando modulo Nest em apps/backend/src/modules/${moduleName}/...`);
+  log('6/12', `Criando modulo Nest em apps/backend/src/modules/${moduleName}/...`);
   const pascalName = toPascalCase(moduleName);
   const nestModuleDir = path.join(targetDir, 'apps', 'backend', 'src', 'modules', moduleName);
   fs.mkdirSync(nestModuleDir, { recursive: true });
@@ -202,7 +210,7 @@ function stepCreateNestModule(targetDir, moduleName) {
 }
 
 function stepRegisterNestModuleInAppModule(targetDir, moduleName) {
-  log('7/10', 'Registrando modulo Nest em apps/backend/src/app.module.ts...');
+  log('7/12', 'Registrando modulo Nest em apps/backend/src/app.module.ts...');
   const pascalName = toPascalCase(moduleName);
   const className = `${pascalName}Module`;
   const appModulePath = path.join(targetDir, 'apps', 'backend', 'src', 'app.module.ts');
@@ -235,25 +243,76 @@ function stepRegisterNestModuleInAppModule(targetDir, moduleName) {
   ok(`${className} importado e registrado em imports do AppModule.`);
 }
 
+function stepCreateFrontendModule(targetDir, moduleName, routeGroup) {
+  log('8/12', `Criando arquivos do modulo no frontend (apps/frontend/src/modules/${moduleName}/ e rota (${routeGroup}))...`);
+  const pascalName = toPascalCase(moduleName);
+
+  const applyPlaceholders = (template) =>
+    template.replace(/@@PascalName@@/g, pascalName).replace(/@@kebabName@@/g, moduleName);
+
+  const frontendModuleDir = path.join(
+    targetDir,
+    'apps',
+    'frontend',
+    'src',
+    'modules',
+    moduleName
+  );
+  fs.mkdirSync(frontendModuleDir, { recursive: true });
+
+  const componentContent = applyPlaceholders(
+    fs.readFileSync(path.join(ASSETS_DIR, 'frontend-module-component.tsx.template'), 'utf8')
+  );
+  fs.writeFileSync(
+    path.join(frontendModuleDir, `${moduleName}.component.tsx`),
+    componentContent
+  );
+
+  const modulePageContent = applyPlaceholders(
+    fs.readFileSync(path.join(ASSETS_DIR, 'frontend-module-page.tsx.template'), 'utf8')
+  );
+  fs.writeFileSync(path.join(frontendModuleDir, `${moduleName}.page.tsx`), modulePageContent);
+
+  const routeDir = path.join(
+    targetDir,
+    'apps',
+    'frontend',
+    'src',
+    'app',
+    `(${routeGroup})`,
+    moduleName
+  );
+  fs.mkdirSync(routeDir, { recursive: true });
+
+  const routePageContent = applyPlaceholders(
+    fs.readFileSync(path.join(ASSETS_DIR, 'frontend-route-page.tsx.template'), 'utf8')
+  );
+  fs.writeFileSync(path.join(routeDir, 'page.tsx'), routePageContent);
+
+  ok(
+    `Rota (${routeGroup}), "${moduleName}.page.tsx" e "${moduleName}.component.tsx" criados no frontend.`
+  );
+}
+
 function stepInstall(targetDir) {
-  log('8/10', 'Instalando dependencias do projeto (npm install)...');
+  log('9/12', 'Instalando dependencias do projeto (npm install)...');
   run('npm', ['install'], targetDir);
   ok('Dependencias instaladas.');
 }
 
 function stepBuild(targetDir) {
-  log('9/10', 'Rodando build do projeto (npm run build)...');
+  log('10/12', 'Rodando build do projeto (npm run build)...');
   run('npm', ['run', 'build'], targetDir);
   ok('Build concluido.');
 }
 
 function stepTestModule(moduleDir, moduleName) {
-  log('10/10', `Rodando testes do modulo ${moduleName}...`);
+  log('11/12', `Rodando testes do modulo ${moduleName}...`);
   run('npm', ['test'], moduleDir);
   ok('Testes do modulo passaram.');
 }
 
-function stepVerify(targetDir, namespace, moduleName) {
+function stepVerify(targetDir, namespace, moduleName, routeGroup) {
   log('verify', 'Verificando resultado final...');
   const moduleDir = path.join(targetDir, 'modules', moduleName);
   const rootPkg = readJson(path.join(targetDir, 'package.json'));
@@ -265,6 +324,23 @@ function stepVerify(targetDir, namespace, moduleName) {
   const appModuleContent = fs.readFileSync(
     path.join(targetDir, 'apps', 'backend', 'src', 'app.module.ts'),
     'utf8'
+  );
+  const frontendModuleDir = path.join(
+    targetDir,
+    'apps',
+    'frontend',
+    'src',
+    'modules',
+    moduleName
+  );
+  const frontendRouteDir = path.join(
+    targetDir,
+    'apps',
+    'frontend',
+    'src',
+    'app',
+    `(${routeGroup})`,
+    moduleName
   );
 
   const checks = [
@@ -299,6 +375,18 @@ function stepVerify(targetDir, namespace, moduleName) {
       `app.module.ts registra ${pascalName}Module em imports`,
       new RegExp(`imports:\\s*\\[\\s*${pascalName}Module,`).test(appModuleContent),
     ],
+    [
+      `apps/frontend/src/modules/${moduleName}/${moduleName}.component.tsx existe`,
+      exists(path.join(frontendModuleDir, `${moduleName}.component.tsx`)),
+    ],
+    [
+      `apps/frontend/src/modules/${moduleName}/${moduleName}.page.tsx existe`,
+      exists(path.join(frontendModuleDir, `${moduleName}.page.tsx`)),
+    ],
+    [
+      `apps/frontend/src/app/(${routeGroup})/${moduleName}/page.tsx existe`,
+      exists(path.join(frontendRouteDir, 'page.tsx')),
+    ],
   ];
 
   let allOk = true;
@@ -316,10 +404,12 @@ function main() {
   const targetDir = path.resolve(args.dir || process.cwd());
   const namespace = typeof args.namespace === 'string' ? args.namespace : null;
   const moduleName = typeof args.name === 'string' ? args.name : null;
+  const routeGroup = typeof args['route-group'] === 'string' ? args['route-group'] : 'private';
 
   checkPrerequisites();
   checkNamespace(namespace);
   checkModuleName(moduleName);
+  checkRouteGroup(routeGroup);
   checkTargetDir(targetDir);
 
   const rootPkgPath = path.join(targetDir, 'package.json');
@@ -332,10 +422,11 @@ function main() {
   stepEnsureModulesWorkspace(rootPkgPath);
   stepCreateNestModule(targetDir, moduleName);
   stepRegisterNestModuleInAppModule(targetDir, moduleName);
+  stepCreateFrontendModule(targetDir, moduleName, routeGroup);
   stepInstall(targetDir);
   stepBuild(targetDir);
   stepTestModule(moduleDir, moduleName);
-  stepVerify(targetDir, namespace, moduleName);
+  stepVerify(targetDir, namespace, moduleName, routeGroup);
 }
 
 main();

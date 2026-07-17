@@ -1,3 +1,1 @@
-export function ping(): string {
-  return 'ok';
-}
+export { ping } from '@poupig/shared';

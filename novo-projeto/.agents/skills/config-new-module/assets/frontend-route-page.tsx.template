@@ -1,0 +1,5 @@
+import { @@PascalName@@Page } from '@/modules/@@kebabName@@/@@kebabName@@.page';
+
+export default function Page() {
+  return <@@PascalName@@Page />;
+}
